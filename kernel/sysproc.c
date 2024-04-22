@@ -97,3 +97,18 @@ uint64 sys_hello(void) // hello syscall definition
   print_hello(n);
   return 0;
 }
+
+uint64
+sys_sysinfo(void)
+{
+  int n;
+  argint(0, &n);
+  return sysinfo(n);
+}
+
+uint64
+sys_procinfo(void){
+  uint64 p;
+  argaddr(0, &p);
+  return procinfo(p);
+}

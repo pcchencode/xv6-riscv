@@ -687,3 +687,55 @@ void print_hello(int n)
 {
   printf("Hello from the kernel space %d\n", n);
 }
+
+extern int call_cnt; // defined in syscall.c, use extern to import
+int sysinfo (int param){
+  if (param == 0){
+    struct proc *p;
+    //char *state;
+    int number_process = 0; //the total number of active processes
+
+    //iterate through process table
+    for(p = proc; p < &proc[NPROC]; p++){
+      if(p->state == RUNNING || p->state == ZOMBIE || p->state == SLEEPING || p->state == RUNNABLE)
+        number_process++;
+    }
+    return number_process;
+  }else if(param == 1){
+    return call_cnt;
+  }else if(param == 2){
+    return count_page();
+  }else{
+    return -1;
+  }
+}
+
+int procinfo(uint64 in){
+  // fill the fields
+  struct proc* p = myproc(); // current process
+  
+  // ppid
+  struct proc* pp = p -> parent; // parent process
+  int ppid = pp -> pid;
+
+  // syscall_count
+  int syscall_count = p -> syscall_count;
+  
+  // page_usage, memory size
+  int page_usage = (p -> sz) / PGSIZE; // page size is 4096 bytes, which can be found in kalloc.c
+  if ((p -> sz) % PGSIZE != 0){ // allocate one more page for leftover
+    page_usage ++;
+  }
+
+  if((copyout(p->pagetable, in, (char *)&(ppid), sizeof(int)) < 0)) {
+    printf("ppid fault");
+    return -1;
+  } else if (copyout(p->pagetable, in + sizeof(int), (char *)&(syscall_count), sizeof(int)) < 0) {
+    printf("syscount fault");
+    return -1;
+  } else if (copyout(p->pagetable, (in + sizeof(int)) + sizeof(int), (char *)&(page_usage), sizeof(int)) < 0) {
+    printf("pageuse fault");
+    return -1;
+  }
+  return 0;
+}

@@ -102,6 +102,8 @@ extern uint64 sys_link(void);
 extern uint64 sys_mkdir(void);
 extern uint64 sys_close(void);
 extern uint64 sys_hello(void); // hello: declaration
+extern uint64 sys_sysinfo(void); // sys_sysinfo: declaration
+extern uint64 sys_procinfo(void); // sys_procinfo: declaration
 
 // An array mapping syscall numbers from syscall.h
 // to the function that handles the system call.
@@ -128,8 +130,11 @@ static uint64 (*syscalls[])(void) = {
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
 [SYS_hello]   sys_hello, // hello: syscall entry
+[SYS_sysinfo] sys_sysinfo,
+[SYS_procinfo] sys_procinfo,
 };
 
+int call_cnt = 0;
 void
 syscall(void)
 {
@@ -146,4 +151,8 @@ syscall(void)
             p->pid, p->name, num);
     p->trapframe->a0 = -1;
   }
+  
+  // place the incrementater here to exclude the current syscall
+  call_cnt ++; // any syscallx
+  p -> syscall_count ++; //increment per process count
 }

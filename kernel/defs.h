@@ -63,6 +63,7 @@ void            ramdiskrw(struct buf*);
 void*           kalloc(void);
 void            kfree(void *);
 void            kinit(void);
+int             count_page(void); //helper function used for page counting
 
 // log.c
 void            initlog(int, struct superblock*);
@@ -107,6 +108,8 @@ int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
 int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
 void            procdump(void);
 void            print_hello(int); // hello
+int             sysinfo(int); // Lab 1: sysinfo
+int             procinfo(uint64); // Lab 2: procinfo
 
 // swtch.S
 void            swtch(struct context*, struct context*);
