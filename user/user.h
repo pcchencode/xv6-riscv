@@ -22,6 +22,9 @@ int getpid(void);
 char* sbrk(int);
 int sleep(int);
 int uptime(void);
+int hello(int); // hello
+int sysinfo(int); // Lab 1
+int procinfo(void*); // we don't know the exact type in kernel
 
 // ulib.c
 int stat(const char*, struct stat*);
