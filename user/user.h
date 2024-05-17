@@ -25,6 +25,8 @@ int uptime(void);
 int hello(int); // hello
 int sysinfo(int); // Lab 1
 int procinfo(void*); // we don't know the exact type in kernel
+int sched_statistics(void); //Lab2
+int sched_tickets(int); //Lab2
 
 // ulib.c
 int stat(const char*, struct stat*);

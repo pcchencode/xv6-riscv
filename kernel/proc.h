@@ -106,4 +106,10 @@ struct proc {
   char name[16];               // Process name (debugging)
 
   int syscall_count;           // total number of system calls made by current process
+
+  int tickets;                 // tickets value
+  int ticks;                   // the number of times the process has been scheduled to run
+
+  int stride;                  // stride variables used for the stride scheduling
+  int pass;                    // pass variables used for the stride scheduling
 };

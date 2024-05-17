@@ -112,3 +112,19 @@ sys_procinfo(void){
   argaddr(0, &p);
   return procinfo(p);
 }
+
+uint64
+sys_sched_statistics(void)
+{
+  sched_statistics();
+  return 0;
+}
+
+uint64
+sys_sched_tickets(int)
+{
+  int n;
+  argint(0, &n);
+  sched_tickets(n);
+  return 0;
+}

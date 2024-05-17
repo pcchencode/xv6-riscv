@@ -109,7 +109,9 @@ int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
 void            procdump(void);
 void            print_hello(int); // hello
 int             sysinfo(int); // Lab 1: sysinfo
-int             procinfo(uint64); // Lab 2: procinfo
+int             procinfo(uint64); // Lab 1: procinfo
+int             sched_statistics(void); //Lab 2
+int             sched_tickets(int); //Lab2
 
 // swtch.S
 void            swtch(struct context*, struct context*);
