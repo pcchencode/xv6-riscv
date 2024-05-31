@@ -166,8 +166,17 @@ freeproc(struct proc *p)
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
-  if(p->pagetable)
-    proc_freepagetable(p->pagetable, p->sz);
+  //when deallocating child thread, we don't want to
+  //clear the whole pagetable/trampoline for that child thread
+  // Lab3 modification
+  if(p->pagetable){
+    if(p->thread_id != 0){
+      uvmunmap(p->pagetable, TRAPFRAME - (PGSIZE * p->thread_id), 1, 0); //same as how to mapped them
+    }else{
+      proc_freepagetable(p->pagetable, p->sz);
+    }
+  }
+
   p->pagetable = 0;
   p->sz = 0;
   p->pid = 0;
@@ -183,6 +192,7 @@ freeproc(struct proc *p)
   p->ticks = 0; // Lab 2
   p->stride = 0; // Lab 2
   p->pass = 0; // Lab 2
+  p->thread_id = 0; // Lab 3
 }
 
 // Create a user page table for a given process, with no user memory,
@@ -888,5 +898,132 @@ int sched_tickets(int tickets_value){
     p->stride = 10000/tickets_value;
     p->pass = p->stride;
   }
-  return 0;           
+  return 0;     
+}
+
+// Lab3 (0): Main function starts
+int nexttid = 1; // Global variable for the next thread_id
+struct spinlock tid_lock;
+
+// Function to allocate a thread ID
+int allocthreadid() {
+  int thread_id;
+  
+  // Ensure atomic access to the thread ID allocation
+  acquire(&tid_lock);
+  thread_id = nexttid;
+  nexttid = nexttid + 1;
+  release(&tid_lock);
+
+  return thread_id;
+}
+
+// Lab3 (1): Similar to allocproc but without creating a new page table
+static struct proc* allocproc_thread(void) {
+  struct proc *p;
+
+  // Look for an UNUSED process slot
+  for (p = proc; p < &proc[NPROC]; p++) {
+    acquire(&p->lock);
+    if (p->state == UNUSED) {
+      goto found;
+    } else {
+      release(&p->lock);
+    }
+  }
+  return 0;
+
+found:
+  // Initialize the process structure
+  p->pid = allocpid();
+  p->thread_id = allocthreadid();
+  p->state = USED;
+
+  // Initialize the syscall count
+  p->syscall_count = 0;
+
+  // Initialize tickets and counters
+  p->tickets = 10000;
+  p->ticks = 0;
+  p->stride = 10000 / p->tickets;
+  p->pass = p->stride;
+
+  // Allocate a trapframe page
+  if ((p->trapframe = (struct trapframe *)kalloc()) == 0) {
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+
+  // Set up new context to start executing at forkret, which returns to user space
+  memset(&p->context, 0, sizeof(p->context));
+  p->context.ra = (uint64)forkret;
+  p->context.sp = p->kstack + PGSIZE;
+
+  return p;
+}
+
+// Lab3 (2): Clone a process to create a new thread
+int clone(void* stack) {
+  // Ensure the stack address is valid
+  if (stack == 0) {
+    return -1;
+  }
+  
+  int i, thread_id;
+  struct proc *np; // Child process
+  struct proc *p = myproc();
+  
+  // Allocate a new process structure for the thread
+  if ((np = allocproc_thread()) == 0) {
+    return -1;
+  }
+
+  // Share the parent's page table with the child thread
+  np->pagetable = p->pagetable;
+
+  // Map the trapframe page for the child thread
+  if (mappages(np->pagetable, TRAPFRAME - PGSIZE * (np->thread_id), PGSIZE,
+               (uint64)(np->trapframe), PTE_R | PTE_W) < 0) {
+    uvmunmap(np->pagetable, TRAMPOLINE, 1, 0);
+    uvmfree(np->pagetable, 0);
+    return 0;
+  }
+  np->sz = p->sz;
+
+  // Copy saved user registers
+  *(np->trapframe) = *(p->trapframe);
+
+  // Set fork return value to 0 in the child
+  np->trapframe->a0 = 0;
+
+  // Set the user stack for the child
+  np->trapframe->sp = (uint64)(stack + PGSIZE);
+
+  // Duplicate file descriptors
+  for (i = 0; i < NOFILE; i++) {
+    if (p->ofile[i]) {
+      np->ofile[i] = filedup(p->ofile[i]);
+    }
+  }
+  np->cwd = idup(p->cwd);
+
+  // Copy the process name
+  safestrcpy(np->name, p->name, sizeof(p->name));
+
+  // Get the thread ID for return
+  thread_id = np->thread_id;
+
+  release(&np->lock);
+
+  // Set parent and make the child runnable
+  acquire(&wait_lock);
+  np->parent = p;
+  release(&wait_lock);
+
+  acquire(&np->lock);
+  np->state = RUNNABLE;
+  release(&np->lock);
+
+  return thread_id;
 }

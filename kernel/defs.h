@@ -112,6 +112,7 @@ int             sysinfo(int); // Lab 1: sysinfo
 int             procinfo(uint64); // Lab 1: procinfo
 int             sched_statistics(void); //Lab 2
 int             sched_tickets(int); //Lab2
+int             clone(void*); //Lab3
 
 // swtch.S
 void            swtch(struct context*, struct context*);

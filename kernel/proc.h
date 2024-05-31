@@ -112,4 +112,6 @@ struct proc {
 
   int stride;                  // stride variables used for the stride scheduling
   int pass;                    // pass variables used for the stride scheduling
+
+  int thread_id;               // thread id in lab3
 };

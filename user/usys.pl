@@ -44,3 +44,5 @@ entry("procinfo");
 # Lab 2
 entry("sched_statistics");
 entry("sched_tickets");
+# Lab 3
+entry("clone");

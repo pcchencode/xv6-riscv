@@ -128,3 +128,11 @@ sys_sched_tickets(int)
   sched_tickets(n);
   return 0;
 }
+
+uint64
+sys_clone(void)
+{
+  uint64 p;
+  argaddr(0, &p); // check whether the input stack address is correct
+  return clone((void*)p);
+}
