@@ -5,6 +5,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include <limits.h> // Lab2 for INT_MAX
 
 struct cpu cpus[NCPU];
 
@@ -125,6 +126,13 @@ found:
   p->pid = allocpid();
   p->state = USED;
 
+  p->syscall_count = 0; //initialize the syscall count
+
+  p->tickets = 10000; //tickets value initialize to 10000
+  p->ticks = 0; //ticks value initialize to 0
+  p->stride = 10000/p->tickets; //use 10000 as big constant, stride = big constant/tickets
+  p->pass = p->stride; //initially assign pass to stride value
+
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
     freeproc(p);
@@ -169,6 +177,12 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+  //newly added fields
+  p->syscall_count = 0; // Lab 1
+  p->tickets = 0; // free the var in Lab 2
+  p->ticks = 0; // Lab 2
+  p->stride = 0; // Lab 2
+  p->pass = 0; // Lab 2
 }
 
 // Create a user page table for a given process, with no user memory,
@@ -434,34 +448,141 @@ wait(uint64 addr)
   }
 }
 
-// Per-CPU process scheduler.
-// Each CPU calls scheduler() after setting itself up.
-// Scheduler never returns.  It loops, doing:
-//  - choose a process to run.
-//  - swtch to start running that process.
-//  - eventually that process transfers control
-//    via swtch back to the scheduler.
-void
-scheduler(void)
+// Lab 2
+// pseudo random generator (https://stackoverflow.com/a/7603688)
+unsigned short lfsr = 0xACE1u;
+unsigned short bit;
+unsigned short rand(int num_tickets)
 {
+  bit = ((lfsr >> 0) ^ (lfsr >> 2) ^ (lfsr >> 3) ^ (lfsr >> 5)) & 1;
+  lfsr = (lfsr >> 1) | (bit << 15);
+  return lfsr % num_tickets + 1;
+}
+
+// Helper function to calculate the total number of tickets among all runnable processes
+int calculate_total_tickets() {
+  int total_tickets = 0;
+  struct proc *p;
+  for (p = proc; p < &proc[NPROC]; p++) {
+    acquire(&p->lock);
+    if (p->state == RUNNABLE) {
+      total_tickets += p->tickets;
+    }
+    release(&p->lock);
+  }
+  return total_tickets;
+}
+
+// Lottery scheduler
+// The chance of a process being selected depends on the number of tickets it holds
+#if defined(LOTTERY)
+void scheduler(void) {
   struct proc *p;
   struct cpu *c = mycpu();
   
   c->proc = 0;
-  for(;;){
+
+  for (;;) {
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
 
-    for(p = proc; p < &proc[NPROC]; p++) {
+    int total_tickets = calculate_total_tickets();
+    int chosen_ticket = (int) rand(total_tickets); // Select a random ticket number within the range of total tickets
+    for (p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
-      if(p->state == RUNNABLE) {
-        // Switch to chosen process.  It is the process's job
-        // to release its lock and then reacquire it
-        // before jumping back to us.
+      if (p->state == RUNNABLE) {
+        chosen_ticket -= p->tickets;
+        if (chosen_ticket <= 0) {
+          // Switch to the chosen process. It is the process's responsibility
+          // to release its lock and reacquire it before returning to us.
+          p->state = RUNNING;
+          c->proc = p;
+          p->ticks++;
+
+          swtch(&c->context, &p->context);
+            
+          // Process is done running for now.
+          // It should have changed its p->state before coming back.
+          c->proc = 0;
+          release(&p->lock);
+          break;
+        }
+      }
+      release(&p->lock);
+    }
+  }
+}
+#elif defined(STRIDE)
+// Stride scheduler
+void scheduler() {
+  struct proc *p;
+  struct cpu *c = mycpu();
+  
+  c->proc = 0;
+
+  for (;;) {
+    // Avoid deadlock by ensuring that devices can interrupt.
+    intr_on();
+
+    // Find the process with the minimum pass value
+    struct proc *selected_proc;
+    int min_pass_value = INT_MAX;
+    for (p = proc; p < &proc[NPROC]; p++) {
+      acquire(&p->lock);
+      if (p->state == RUNNABLE) {
+        if (p->pass < min_pass_value) {
+          min_pass_value = p->pass;
+          selected_proc = p;
+        }
+      }
+      release(&p->lock);
+    }
+
+    // After finding the process
+    if (min_pass_value != INT_MAX) { // Ensure a valid process was found
+      acquire(&selected_proc->lock);
+      selected_proc->state = RUNNING;
+      c->proc = selected_proc;
+      selected_proc->pass += selected_proc->stride;
+      selected_proc->ticks++;
+      swtch(&c->context, &selected_proc->context);
+            
+      // Process is done running for now.
+      // It should have changed its p->state before coming back.
+      c->proc = 0;
+      release(&selected_proc->lock);
+    } 
+  }
+}
+
+// Per-CPU process scheduler.
+// Each CPU calls scheduler() after setting itself up.
+// Scheduler never returns. It loops, doing:
+//  - Choose a process to run.
+//  - swtch to start running that process.
+//  - Eventually that process transfers control
+//    via swtch back to the scheduler.
+#else
+void scheduler(void) {
+  struct proc *p;
+  struct cpu *c = mycpu();
+  
+  c->proc = 0;
+  for (;;) {
+    // Avoid deadlock by ensuring that devices can interrupt.
+    intr_on();
+
+    for (p = proc; p < &proc[NPROC]; p++) {
+      acquire(&p->lock);
+      if (p->state == RUNNABLE) {
+        // Switch to the chosen process. It is the process's responsibility
+        // to release its lock and reacquire it before returning to us.
         p->state = RUNNING;
         c->proc = p;
-        swtch(&c->context, &p->context);
+        p->ticks++;
 
+        swtch(&c->context, &p->context);
+        
         // Process is done running for now.
         // It should have changed its p->state before coming back.
         c->proc = 0;
@@ -470,6 +591,8 @@ scheduler(void)
     }
   }
 }
+#endif
+
 
 // Switch to scheduler.  Must hold only p->lock
 // and have changed proc->state. Saves and restores
@@ -738,4 +861,32 @@ int procinfo(uint64 in){
     return -1;
   }
   return 0;
+}
+
+// Lab 2
+//1) PID, 2) name in a parenthesis, 3) the ticket value, 4) the number of times it has been scheduled to run
+int sched_statistics(void){
+  struct proc *p;
+  for(p = proc; p < &proc[NPROC]; p++){
+    if(p->state == RUNNING || p->state == ZOMBIE || p->state == SLEEPING || p->state == RUNNABLE){
+      printf("%d(%s): tickets: %d, ticks: %d", p->pid, p->name, p->tickets, p->ticks);
+      printf("\n");
+    }
+  }
+
+  /*for (int i = 0; i < 20; ++i) {
+    printf("%d ", rand(10));
+  }*/
+
+  return 0;
+}
+
+int sched_tickets(int tickets_value){
+  struct proc* p = myproc(); //current process
+  if(tickets_value <= 10000){
+    p->tickets = tickets_value;
+    p->stride = 10000/tickets_value;
+    p->pass = p->stride;
+  }
+  return 0;           
 }

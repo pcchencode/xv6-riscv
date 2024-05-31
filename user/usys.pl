@@ -41,3 +41,6 @@ entry("hello");
 # Lab 1
 entry("sysinfo");
 entry("procinfo");
+# Lab 2
+entry("sched_statistics");
+entry("sched_tickets");
